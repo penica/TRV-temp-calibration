@@ -1,0 +1,62 @@
+blueprint:
+  name: Sync TRV tempature
+  description: Sync external tempature sensor with TRV tempature
+  domain: automation
+  input:
+    ieeeaddressoftrv:
+      name: IEEE Address
+      description: This is the address of the TRV found in your zigbee database example 0x459877fffe1f2e83
+    external_temp:
+      name: Select the external temp sensor
+      description: This will be your external temp sensor
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    climate_name:
+      name: Climate entry
+      description: This will be the TRV it self in home assistant
+      selector:
+        entity:
+          domain: climate 
+alias: Calibrate Thermostat
+description: ''
+
+variables:
+  target_device: !input 'ieeeaddressoftrv'
+  climate_device: !input 'climate_name'
+  external_temperature: !input 'external_temp'
+  adjust: "{{state_attr(climate_device, 'current_temperature')}}"
+trigger:
+  - platform: state
+    entity_id: !input 'external_temp'
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 15
+      milliseconds: 0
+  - platform: state
+    entity_id: !input 'climate_name'
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 15
+      milliseconds: 0
+condition:
+  condition: and
+  conditions:
+    - condition: template
+      value_template: "{{ states(external_temperature) != 'unavailable' }}"
+    - condition: template
+      value_template: "{{ states(external_temperature) != 'unknown' }}"
+    - condition: template
+      value_template: "{{ state_attr(climate_device,'local_temperature_calibration')|float(0) | round(1, 'half') !=( states(external_temperature)|float(0) | round(1,'half') - state_attr(climate_device,'local_temperature')|float(0) | round(1, 'half') + state_attr(climate_device,'local_temperature_calibration')|float(0) | round(1, 'half')) }}"
+action:      
+  - service: mqtt.publish
+    data_template:
+      topic: zigbee2mqtt/{{ target_device }}/set/local_temperature_calibration
+      payload_template: >-
+        {{states(external_temperature)|float(0) | round(1,'half') - state_attr(climate_device,'local_temperature')|float(0) | round(1, 'half') + state_attr(climate_device,'local_temperature_calibration')|float(0) | round(1, 'half') }}
+  - delay: 5
+mode: single
+max_exceeded: silent
